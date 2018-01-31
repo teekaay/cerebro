@@ -3,6 +3,7 @@ package controllers.auth.ldap
 import java.util.Hashtable
 import javax.naming._
 import javax.naming.directory._
+import javax.naming.ldap._
 
 import com.google.inject.Inject
 import controllers.auth.AuthService
@@ -19,17 +20,23 @@ class LDAPAuthService @Inject()(globalConfig: Configuration) extends AuthService
   def auth(username: String, password: String): Option[String] = {
     val env = new Hashtable[String, String](11)
     env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
-    env.put(Context.PROVIDER_URL, s"${config.url}/${config.baseDN}")
+    env.put(Context.PROVIDER_URL, s"${config.url}")
     env.put(Context.SECURITY_AUTHENTICATION, config.method)
-    if (username.endsWith(s"@${config.domain}")) {
-      env.put(Context.SECURITY_PRINCIPAL, username)
+    if (config.domain == "") {
+      log.debug("Authenticating without user-domain")
+      env.put(Context.SECURITY_PRINCIPAL, s"uid=${username},${config.baseDN}")
     } else {
-      env.put(Context.SECURITY_PRINCIPAL, s"$username@${config.domain}")
+      log.debug("Authenticating with user-domain (user@domain)")
+      if (username.endsWith(s"@${config.domain}")) {
+        env.put(Context.SECURITY_PRINCIPAL, username)
+      } else {
+        env.put(Context.SECURITY_PRINCIPAL, s"$username@${config.domain}")
+      }
     }
     env.put(Context.SECURITY_CREDENTIALS, password)
 
     try {
-      val ctx = new InitialDirContext(env)
+      val ctx = new InitialLdapContext(env, null)
       ctx.close()
       Some(username)
     } catch {
